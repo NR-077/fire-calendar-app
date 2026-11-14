@@ -608,7 +608,7 @@
         const south = selectedBounds.getSouth();
         const east = selectedBounds.getEast();
         const north = selectedBounds.getNorth();
-        const url = `http://127.0.0.1:8000/api/month_risk?year=${year}&month=${mNum}&west=${west}&south=${south}&east=${east}&north=${north}`;
+        const url = `https://fire-calendar-app.onrender.com/api/month_risk?year=${year}&month=${mNum}&west=${west}&south=${south}&east=${east}&north=${north}`;
         const res = await fetch(url);
         const data = await res.json();
         monthRiskCache[cacheKey] = data.risk_days || {};
@@ -1104,7 +1104,7 @@
         const east = selectedBounds.getEast();
         const north = selectedBounds.getNorth();
 
-        const url = `http://127.0.0.1:8000/api/hotspots_range?start_date=${startDateVal}&end_date=${endDateVal}&west=${west}&south=${south}&east=${east}&north=${north}`;
+        const url = `https://fire-calendar-app.onrender.com/api/hotspots_range?start_date=${startDateVal}&end_date=${endDateVal}&west=${west}&south=${south}&east=${east}&north=${north}`;
         const response = await fetch(url);
         fullRangeData = await response.json();
 
