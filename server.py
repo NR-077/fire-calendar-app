@@ -262,3 +262,121 @@ def get_hotspots_range(request: Request, start_date: str, end_date: str, west: f
         return cached_hotspots_range(start_date, end_date, w, s, e, n)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@lru_cache(maxsize=128)
+def cached_fire_events(west: float, south: float, east: float, north: float):
+    region = ee.Geometry.Rectangle([west, south, east, north])
+    col = ee.ImageCollection("FIRMS") \
+        .filterDate("2000-11-01", datetime.utcnow().strftime("%Y-%m-%d")) \
+        .filterBounds(region)
+
+    def check_image(img):
+        has_t21 = img.bandNames().contains('T21')
+
+        def compute():
+            t21 = img.select(['T21'])
+            fire_mask = t21.gt(300)
+            frp_img = t21.subtract(300).max(0).updateMask(fire_mask)
+            stats = frp_img.reduceRegion(
+                reducer=ee.Reducer.count().combine(ee.Reducer.sum(), sharedInputs=True),
+                geometry=region,
+                scale=1000,
+                maxPixels=1e6,
+                bestEffort=False
+            )
+            return ee.Feature(None, {
+                'date': img.date().format('YYYY-MM-dd'),
+                'count': stats.get('T21_count'),
+                'raw_frp': stats.get('T21_sum')
+            })
+
+        empty = ee.Feature(None, {
+            'date': img.date().format('YYYY-MM-dd'),
+            'count': 0,
+            'raw_frp': 0
+        })
+        return ee.Algorithms.If(has_t21, compute(), empty)
+
+    fc = ee.FeatureCollection(col.map(check_image)).filter(ee.Filter.gt('count', 0)).getInfo()
+
+    daily_hits = {}
+    for feat in fc.get('features', []):
+        p = feat.get('properties', {})
+        d_str = p.get('date')
+        cnt = int(p.get('count') or 0)
+        raw_frp = float(p.get('raw_frp') or 0.0)
+        if not d_str or cnt <= 0:
+            continue
+
+        is_pre_viirs = d_str < "2012-01-20"
+        mult = (2.5 * MODIS_TO_VIIRS_FACTOR) if is_pre_viirs else 3.1
+        harm_frp = raw_frp * mult
+
+        if d_str not in daily_hits:
+            daily_hits[d_str] = {"count": 0, "frp": 0.0}
+        daily_hits[d_str]["count"] = max(daily_hits[d_str]["count"], cnt)
+        daily_hits[d_str]["frp"] = max(daily_hits[d_str]["frp"], harm_frp)
+
+    sorted_dates = sorted(daily_hits.keys())
+    events = []
+    curr_event = None
+
+    for d_str in sorted_dates:
+        dt = datetime.strptime(d_str, "%Y-%m-%d")
+        info = daily_hits[d_str]
+
+        if curr_event is None:
+            curr_event = {
+                "start_date": d_str,
+                "end_date": d_str,
+                "last_dt": dt,
+                "peak_count": info["count"],
+                "total_frp": info["frp"]
+            }
+        else:
+            gap_days = (dt - curr_event["last_dt"]).days
+            # Group consecutive days (allowing up to a 2-day cloud/smoke gap) into one burn event
+            if gap_days <= 3:
+                curr_event["end_date"] = d_str
+                curr_event["last_dt"] = dt
+                curr_event["peak_count"] = max(curr_event["peak_count"], info["count"])
+                curr_event["total_frp"] += info["frp"]
+            else:
+                events.append(curr_event)
+                curr_event = {
+                    "start_date": d_str,
+                    "end_date": d_str,
+                    "last_dt": dt,
+                    "peak_count": info["count"],
+                    "total_frp": info["frp"]
+                }
+
+    if curr_event is not None:
+        events.append(curr_event)
+
+    formatted_events = []
+    for ev in reversed(events):  # Most recent fires first
+        d1 = datetime.strptime(ev["start_date"], "%Y-%m-%d")
+        d2 = datetime.strptime(ev["end_date"], "%Y-%m-%d")
+        duration = (d2 - d1).days + 1
+        risk = classify_risk(ev["peak_count"], ev["total_frp"])
+        formatted_events.append({
+            "start_date": ev["start_date"],
+            "end_date": ev["end_date"],
+            "duration_days": duration,
+            "peak_count": ev["peak_count"],
+            "total_frp": round(ev["total_frp"], 1),
+            "risk_level": risk.upper()
+        })
+
+    return {"events": formatted_events}
+
+
+@app.get("/api/fire_events")
+@limiter.limit("12/minute")
+def get_fire_events(request: Request, west: float, south: float, east: float, north: float):
+    try:
+        w, s, e, n = clamp_bbox(west, south, east, north)
+        return cached_fire_events(w, s, e, n)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
