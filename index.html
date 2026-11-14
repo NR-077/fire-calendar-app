@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Wildfire Hotspots & Future Simulation</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      margin: 0;
+      display: flex;
+      height: 100vh;
+      background: #f5f6f8;
+      color: #1a1d20;
+    }
+
+    /* Split Panels */
+    #left-panel {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+      padding: 14px 16px;
+      gap: 8px;
+      background: #ffffff;
+      border-right: 1px solid #dcdfe4;
+      overflow: hidden;
+    }
+    #right-panel {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+      padding: 14px 16px;
+      gap: 8px;
+      background: #121417;
+      color: #f1f3f5;
+      overflow: hidden;
+    }
+
+    /* Clean Compact Section Headers */
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 6px;
+    }
+    #right-panel .panel-header { border-bottom-color: #2c3036; }
+    .panel-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+    .panel-sub {
+      font-size: 11.5px;
+      color: #6c757d;
+    }
+    #right-panel .panel-sub { color: #8c959f; }
+
+    /* City Search Bar with Dropdown Menu */
+    .search-wrapper {
+      position: relative;
+      z-index: 3200;
+    }
+    .search-row {
+      display: flex;
+      gap: 6px;
+    }
+    #city-search-input {
+      flex: 1;
+      padding: 6px 10px;
+      border: 1px solid #c4c9d0;
+      border-radius: 5px;
+      font-size: 13px;
+    }
+    #city-search-input:focus { outline: none; border-color: #1a73e8; }
+    #city-dropdown {
+      display: none;
+      position: absolute;
+      top: 34px;
+      left: 0;
+      right: 0;
+      background: #fff;
+      border: 1px solid #adb5bd;
+      border-radius: 6px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+      max-height: 210px;
+      overflow-y: auto;
+      z-index: 3500;
+    }
+    .city-option {
+      padding: 8px 10px;
+      font-size: 12.5px;
+      color: #1a1d20;
+      cursor: pointer;
+      border-bottom: 1px solid #f1f3f5;
+      display: flex;
+      flex-direction: column;
+    }
+    .city-option:last-child { border-bottom: none; }
+    .city-option:hover { background: #eef4ff; }
+    .city-option-main { font-weight: 600; }
+    .city-option-sub { font-size: 11px; color: #6c757d; }
+
+    /* Controls Bar */
+    #controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+      position: relative;
+      z-index: 2500;
+      font-size: 12.5px;
+    }
+    button {
+      padding: 5px 10px;
+      font-size: 12.5px;
+      border: 1px solid #c4c9d0;
+      border-radius: 5px;
+      background: #f8f9fa;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    button:hover { background: #e9ecef; }
+    #fetch-btn {
+      background: #d9381e;
+      color: #fff;
+      border-color: #b82d16;
+      font-weight: 600;
+    }
+    #fetch-btn:hover { background: #b82d16; }
+
+    .date-btn {
+      background: #fff;
+      border: 1px solid #c4c9d0;
+      border-radius: 5px;
+      padding: 5px 8px;
+      font-size: 12.5px;
+      font-family: monospace;
+      cursor: pointer;
+    }
+    .date-btn.active { border-color: #1a73e8; background: #f0f6ff; }
+
+    /* Box Size Clamp Notice */
+    #box-notice {
+      display: none;
+      font-size: 11.5px;
+      color: #856404;
+      background: #fff3cd;
+      border: 1px solid #ffeeba;
+      border-radius: 4px;
+      padding: 4px 8px;
+    }
+
+    /* Custom Calendar Popover with Risk Dots */
+    #calendar-popover {
+      display: none;
+      position: absolute;
+      top: 34px;
+      left: 0;
+      width: 265px;
+      background: #fff;
+      border: 1px solid #adb5bd;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.22);
+      padding: 10px;
+      z-index: 3000;
+      color: #111;
+    }
+    .cal-header { display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-bottom: 8px; }
+    .cal-header select { padding: 3px 4px; font-size: 12px; font-weight: 600; border-radius: 4px; }
+    .cal-nav-btn { padding: 2px 7px; font-weight: bold; }
+    .cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 11px; font-weight: 600; color: #666; margin-bottom: 4px; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+    .cal-day {
+      height: 30px;
+      border-radius: 5px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .cal-day:hover:not(.disabled):not(.empty) { background: #eef2f5; }
+    .cal-day.selected { background: #1a73e8 !important; color: #fff !important; font-weight: bold; }
+    .cal-day.in-range { background: #e8f0fe; }
+    .cal-day.disabled { color: #ccc; cursor: not-allowed; }
+    .cal-day.empty { cursor: default; }
+
+    .risk-dot { width: 5px; height: 5px; border-radius: 50%; margin-top: 2px; }
+    .risk-low { background: #f9a825; }
+    .risk-moderate { background: #ef6c00; }
+    .risk-high { background: #d32f2f; }
+    .risk-extreme { background: #7f0000; }
+
+    .cal-footer {
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      color: #555;
+    }
+    .legend-item { display: inline-flex; align-items: center; gap: 3px; }
+
+    /* Timeline Scrubber Bar */
+    #timeline-bar {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: #f1f4f8;
+      border: 1px solid #d0d7de;
+      border-radius: 5px;
+      padding: 5px 8px;
+      font-size: 12.5px;
+      width: 100%;
+    }
+    #play-btn { white-space: nowrap; flex-shrink: 0; padding: 3px 8px; }
+    #day-slider { flex: 1 1 auto; min-width: 50px; cursor: pointer; }
+    #active-day-label { font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+    #delta-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #e0e0e0;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* Compact Stats Bar */
+    #stats-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 5px;
+      padding: 6px 10px;
+      position: relative;
+      z-index: 1001;
+    }
+    .stat-item { display: flex; flex-direction: column; }
+    .stat-header { display: flex; align-items: center; gap: 4px; }
+    .stat-label { font-size: 10px; color: #6c757d; text-transform: uppercase; font-weight: 600; }
+    .stat-value { font-size: 13.5px; font-weight: 700; color: #111; }
+
+    .info-icon {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #6c757d;
+      color: #fff;
+      font-size: 9.5px;
+      font-weight: bold;
+      font-style: italic;
+      font-family: Georgia, serif;
+      cursor: pointer;
+      user-select: none;
+    }
+    .info-icon:hover, .info-icon.active { background: #111; }
+    .info-icon .tooltip-text {
+      display: none;
+      width: 215px;
+      background: #1a1a1a;
+      color: #f8f9fa;
+      text-align: left;
+      font-style: normal;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      font-weight: normal;
+      font-size: 11.5px;
+      line-height: 1.4;
+      border-radius: 6px;
+      padding: 8px 10px;
+      position: absolute;
+      z-index: 2000;
+      top: 145%;
+      left: 50%;
+      transform: translateX(-50%);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+    }
+    .info-icon.left-align .tooltip-text { left: 0; transform: none; }
+    .info-icon.right-align .tooltip-text { left: auto; right: 0; transform: none; }
+    .info-icon.active .tooltip-text { display: block; }
+
+    #risk-badge {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      background: #6c757d;
+      text-align: center;
+    }
+
+    /* Map Container & Loader */
+    #map-container {
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 220px;
+      display: flex;
+    }
+    #map { flex: 1; border: 1px solid #adb5bd; border-radius: 6px; z-index: 1; }
+    #map-loader {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 1500;
+      background: rgba(0, 0, 0, 0.78);
+      color: #fff;
+      padding: 16px 24px;
+      border-radius: 8px;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      pointer-events: none;
+    }
+    .spinner {
+      width: 26px;
+      height: 26px;
+      border: 3px solid rgba(255, 255, 255, 0.25);
+      border-top-color: #ff6b35;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Instructions Footer Card (Left Side) */
+    .instructions-box {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: #495057;
+      line-height: 1.45;
+    }
+    .instructions-box strong { color: #111; }
+    .instructions-box ol {
+      margin: 4px 0 0 0;
+      padding-left: 18px;
+    }
+
+    /* Right Panel Simulation & Status Footer */
+    iframe {
+      flex: 1 1 auto;
+      border: 1px solid #2c3036;
+      border-radius: 6px;
+      background: #090a0c;
+    }
+    .sim-footer {
+      background: #1a1d22;
+      border: 1px solid #2c3036;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: #adb5bd;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .sim-status-pill {
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: #252a32;
+      color: #6ea8fe;
+      font-weight: 600;
+      font-size: 11.5px;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- LEFT SIDE: Historical Hotspots & Instructions -->
+  <div id="left-panel">
+    <div class="panel-header">
+      <h2 class="panel-title">Historical Fire Hotspots</h2>
+      <span class="panel-sub">NASA MODIS &amp; VIIRS (2000–Present)</span>
+    </div>
+
+    <!-- Global City Search Bar with Dropdown Menu -->
+    <div class="search-wrapper">
+      <div class="search-row">
+        <input type="text" id="city-search-input" autocomplete="off" placeholder="Search any city or region (e.g., Paradise CA, Athens, Sydney)..." />
+        <button type="button" id="city-search-btn">Search</button>
+      </div>
+      <div id="city-dropdown"></div>
+    </div>
+
+    <!-- Date Range & Box Controls -->
+    <div id="controls">
+      <span><strong>From:</strong></span>
+      <button type="button" id="start-date-btn" class="date-btn">--</button>
+      <span><strong>To:</strong></span>
+      <button type="button" id="end-date-btn" class="date-btn">--</button>
+      <button id="fetch-btn">Reload</button>
+      <button id="zoom-box-btn">Zoom Box</button>
+      <button id="reset-zoom-btn">Global</button>
+
+      <!-- Custom Calendar Popover with Risk Dots -->
+      <div id="calendar-popover">
+        <div class="cal-header">
+          <button type="button" id="cal-prev-month" class="cal-nav-btn">&lt;</button>
+          <select id="cal-month-select"></select>
+          <select id="cal-year-select"></select>
+          <button type="button" id="cal-next-month" class="cal-nav-btn">&gt;</button>
+        </div>
+        <div class="cal-weekdays">
+          <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+        </div>
+        <div id="cal-grid" class="cal-grid"></div>
+        <div class="cal-footer">
+          <span id="cal-status">Draw box to scan risk</span>
+          <div style="display: flex; gap: 5px;">
+            <span class="legend-item"><span class="risk-dot risk-low" style="margin:0"></span>Low</span>
+            <span class="legend-item"><span class="risk-dot risk-moderate" style="margin:0"></span>Mod</span>
+            <span class="legend-item"><span class="risk-dot risk-high" style="margin:0"></span>High</span>
+            <span class="legend-item"><span class="risk-dot risk-extreme" style="margin:0"></span>Ext</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="box-notice">Selection box capped to max 50 km × 50 km window so satellite sampling stays fast and dense.</div>
+
+    <!-- Day-by-Day Scrubber -->
+    <div id="timeline-bar">
+      <button id="play-btn">▶ Play</button>
+      <input type="range" id="day-slider" min="0" max="0" value="0" />
+      <span id="active-day-label">--</span>
+      <span id="delta-badge">Start</span>
+    </div>
+
+    <!-- Compact Stats Bar -->
+    <div id="stats-bar">
+      <div class="stat-item">
+        <div class="stat-header">
+          <span class="stat-label">Hotspots</span>
+          <span class="info-icon left-align">i
+            <span class="tooltip-text"><strong>Active Hotspots:</strong> Satellite grid cells (375m VIIRS or 1km MODIS) detecting active fire inside your box on this date.</span>
+          </span>
+        </div>
+        <span class="stat-value" id="stat-count">--</span>
+      </div>
+
+      <div class="stat-item">
+        <div class="stat-header">
+          <span class="stat-label">Total FRP</span>
+          <span class="info-icon">i
+            <span class="tooltip-text"><strong>Total Intensity (MW):</strong> Combined Fire Radiative Power across all active cells. Higher Megawatts mean greater heat output.</span>
+          </span>
+        </div>
+        <span class="stat-value" id="stat-total-frp">-- MW</span>
+      </div>
+
+      <div class="stat-item">
+        <div class="stat-header">
+          <span class="stat-label">Peak Cell</span>
+          <span class="info-icon">i
+            <span class="tooltip-text"><strong>Peak Cell FRP (MW):</strong> Hottest single grid cell detected—pinpoints the most intense fire front.</span>
+          </span>
+        </div>
+        <span class="stat-value" id="stat-max-frp">-- MW</span>
+      </div>
+
+      <div class="stat-item">
+        <div class="stat-header">
+          <span class="stat-label">Risk Level</span>
+          <span class="info-icon right-align">i
+            <span class="tooltip-text"><strong>Area Risk Level:</strong> Severity rating from hotspot count &amp; MW: Clear (0), Low (&lt;15), Moderate (15–59), High (60–149), Extreme (150+ cells).</span>
+          </span>
+        </div>
+        <span id="risk-badge">NO DATA</span>
+      </div>
+    </div>
+
+    <!-- Satellite Map -->
+    <div id="map-container">
+      <div id="map"></div>
+      <div id="map-loader">
+        <div class="spinner"></div>
+        <span style="font-size: 12.5px; font-weight: 600;">Loading Satellite Data...</span>
+      </div>
+    </div>
+
+    <!-- Instructions Underneath Map -->
+    <div class="instructions-box">
+      <strong>How to Operate:</strong>
+      <ol>
+        <li><strong>Search &amp; Select Area:</strong> Search a city above and pick from the dropdown, then click the black square icon on the left of the map to draw a box (max 50 km wide)—hotspots load automatically.</li>
+        <li><strong>Pick Dates &amp; Play:</strong> Open <em>From / To</em> (colored dots show active fire days) to auto-reload the timeline, scrub day-by-day progression, and send terrain + ignition cells to the simulation.</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- RIGHT SIDE: Future Fire Simulation -->
+  <div id="right-panel">
+    <div class="panel-header">
+      <h2 class="panel-title">Future Fire Simulation</h2>
+      <span class="panel-sub">Cellular Spread &amp; Terrain Model</span>
+    </div>
+
+    <iframe id="godot-frame" src="about:blank" title="Future Fire Simulation"></iframe>
+
+    <div class="sim-footer">
+      <div>
+        <strong style="color: #f1f3f5;">Simulation Controls:</strong>
+        <span>Left-click ignite &bull; Right-drag firebreak &bull; Space play/pause &bull; Arrow keys wind</span>
+      </div>
+      <span id="bridge-status" class="sim-status-pill">Awaiting Map Selection</span>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+  <script>
+    const MAX_SPAN_DEG = 0.45; // Max ~50km x 50km selection box
+
+    // Date Formatting & Initial State (Most recent 4 days)
+    function formatLocalDate(dateObj) {
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const d = String(dateObj.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    const today = new Date();
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(today.getDate() - 3);
+
+    const todayStr = formatLocalDate(today);
+    let startDateVal = formatLocalDate(threeDaysAgo);
+    let endDateVal = todayStr;
+
+    const startBtn = document.getElementById('start-date-btn');
+    const endBtn = document.getElementById('end-date-btn');
+    const calPopover = document.getElementById('calendar-popover');
+    const calMonthSelect = document.getElementById('cal-month-select');
+    const calYearSelect = document.getElementById('cal-year-select');
+    const calGrid = document.getElementById('cal-grid');
+    const calStatus = document.getElementById('cal-status');
+
+    let activeTarget = 'start';
+    let viewYear = today.getFullYear();
+    let viewMonth = today.getMonth();
+    let monthRiskCache = {};
+
+    function updateDateButtons() {
+      startBtn.textContent = `${startDateVal} 📅`;
+      endBtn.textContent = `${endDateVal} 📅`;
+      document.getElementById('active-day-label').textContent = startDateVal;
+    }
+    updateDateButtons();
+
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    monthNames.forEach((name, idx) => {
+      const opt = document.createElement('option');
+      opt.value = idx;
+      opt.textContent = name;
+      calMonthSelect.appendChild(opt);
+    });
+    for (let y = today.getFullYear(); y >= 2000; y--) {
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y;
+      calYearSelect.appendChild(opt);
+    }
+
+    function classifyRiskClient(count, totalFrp) {
+      if (count === 0) return "none";
+      if (count < 15 && totalFrp < 1500) return "low";
+      if (count < 60 && totalFrp < 8000) return "moderate";
+      if (count < 150 && totalFrp < 25000) return "high";
+      return "extreme";
+    }
+
+    async function loadMonthRiskDots(year, monthZeroIdx) {
+      if (!selectedBounds) {
+        calStatus.textContent = "Draw box to see risk dots";
+        return;
+      }
+      const mNum = monthZeroIdx + 1;
+      const cacheKey = `${year}-${String(mNum).padStart(2, '0')}_${selectedBounds.toBBoxString()}`;
+      if (monthRiskCache[cacheKey]) {
+        calStatus.textContent = "Risk dots updated";
+        renderCalendarGrid();
+        return;
+      }
+
+      calStatus.textContent = "Scanning month risk...";
+      try {
+        const west = selectedBounds.getWest();
+        const south = selectedBounds.getSouth();
+        const east = selectedBounds.getEast();
+        const north = selectedBounds.getNorth();
+        const url = `http://127.0.0.1:8000/api/month_risk?year=${year}&month=${mNum}&west=${west}&south=${south}&east=${east}&north=${north}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        monthRiskCache[cacheKey] = data.risk_days || {};
+
+        // Overlay any exact loaded timeline days so they always match 100%
+        if (fullRangeData && fullRangeData.timeline) {
+          fullRangeData.timeline.forEach(day => {
+            if (day.date.startsWith(`${year}-${String(mNum).padStart(2, '0')}`)) {
+              const totalFrp = day.hotspots.reduce((sum, s) => sum + s.harmonized_frp, 0);
+              const lvl = day.risk_level || classifyRiskClient(day.hotspots.length, totalFrp);
+              if (lvl !== "none") {
+                monthRiskCache[cacheKey][day.date] = lvl;
+              } else {
+                delete monthRiskCache[cacheKey][day.date];
+              }
+            }
+          });
+        }
+
+        calStatus.textContent = Object.keys(monthRiskCache[cacheKey]).length > 0
+          ? `${Object.keys(monthRiskCache[cacheKey]).length} active fire days`
+          : "No fire risk this month";
+        renderCalendarGrid();
+      } catch (e) {
+        calStatus.textContent = "Risk scan unavailable";
+      }
+    }
+
+    function renderCalendarGrid() {
+      calMonthSelect.value = viewMonth;
+      calYearSelect.value = viewYear;
+      calGrid.innerHTML = "";
+
+      const firstWeekday = new Date(viewYear, viewMonth, 1).getDay();
+      const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+      const mNum = viewMonth + 1;
+      const cacheKey = selectedBounds ? `${viewYear}-${String(mNum).padStart(2, '0')}_${selectedBounds.toBBoxString()}` : null;
+      const riskDays = (cacheKey && monthRiskCache[cacheKey]) ? monthRiskCache[cacheKey] : {};
+
+      for (let i = 0; i < firstWeekday; i++) {
+        const blank = document.createElement('div');
+        blank.className = 'cal-day empty';
+        calGrid.appendChild(blank);
+      }
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${viewYear}-${String(mNum).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const cell = document.createElement('div');
+        cell.className = 'cal-day';
+
+        const numSpan = document.createElement('span');
+        numSpan.textContent = d;
+        cell.appendChild(numSpan);
+
+        const riskLevel = riskDays[dateStr];
+        if (riskLevel) {
+          const dot = document.createElement('span');
+          dot.className = `risk-dot risk-${riskLevel}`;
+          cell.appendChild(dot);
+        }
+
+        const isFuture = dateStr > todayStr;
+        const isBeforeMin = dateStr < "2000-11-01";
+        const isBeforeStart = (activeTarget === 'end' && dateStr < startDateVal);
+
+        if (isFuture || isBeforeMin || isBeforeStart) {
+          cell.classList.add('disabled');
+        } else {
+          if (dateStr === startDateVal || dateStr === endDateVal) {
+            cell.classList.add('selected');
+          } else if (dateStr > startDateVal && dateStr < endDateVal) {
+            cell.classList.add('in-range');
+          }
+
+          cell.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (activeTarget === 'start') {
+              startDateVal = dateStr;
+              if (endDateVal <= startDateVal) {
+                const nextDay = new Date(startDateVal + 'T00:00:00');
+                nextDay.setDate(nextDay.getDate() + 1);
+                const nextDayStr = formatLocalDate(nextDay);
+                endDateVal = nextDayStr <= todayStr ? nextDayStr : startDateVal;
+              }
+              updateDateButtons();
+              activeTarget = 'end';
+              startBtn.classList.remove('active');
+              endBtn.classList.add('active');
+              renderCalendarGrid();
+            } else {
+              endDateVal = dateStr;
+              updateDateButtons();
+              calPopover.style.display = 'none';
+              startBtn.classList.remove('active');
+              endBtn.classList.remove('active');
+              if (selectedBounds) loadTimeline();
+            }
+          });
+        }
+
+        calGrid.appendChild(cell);
+      }
+    }
+
+    function openCalendar(target) {
+      activeTarget = target;
+      startBtn.classList.toggle('active', target === 'start');
+      endBtn.classList.toggle('active', target === 'end');
+
+      const refDateStr = target === 'start' ? startDateVal : endDateVal;
+      const parts = refDateStr.split('-');
+      viewYear = parseInt(parts[0], 10);
+      viewMonth = parseInt(parts[1], 10) - 1;
+
+      calPopover.style.display = 'block';
+      renderCalendarGrid();
+      loadMonthRiskDots(viewYear, viewMonth);
+    }
+
+    startBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (calPopover.style.display === 'block' && activeTarget === 'start') {
+        calPopover.style.display = 'none';
+        startBtn.classList.remove('active');
+      } else {
+        openCalendar('start');
+      }
+    });
+
+    endBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (calPopover.style.display === 'block' && activeTarget === 'end') {
+        calPopover.style.display = 'none';
+        endBtn.classList.remove('active');
+      } else {
+        openCalendar('end');
+      }
+    });
+
+    calPopover.addEventListener('click', (e) => e.stopPropagation());
+
+    calMonthSelect.addEventListener('change', () => {
+      viewMonth = parseInt(calMonthSelect.value, 10);
+      renderCalendarGrid();
+      loadMonthRiskDots(viewYear, viewMonth);
+    });
+
+    calYearSelect.addEventListener('change', () => {
+      viewYear = parseInt(calYearSelect.value, 10);
+      renderCalendarGrid();
+      loadMonthRiskDots(viewYear, viewMonth);
+    });
+
+    document.getElementById('cal-prev-month').addEventListener('click', () => {
+      viewMonth--;
+      if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+      renderCalendarGrid();
+      loadMonthRiskDots(viewYear, viewMonth);
+    });
+
+    document.getElementById('cal-next-month').addEventListener('click', () => {
+      viewMonth++;
+      if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+      renderCalendarGrid();
+      loadMonthRiskDots(viewYear, viewMonth);
+    });
+
+    // Click-only Info Popups
+    document.querySelectorAll('.info-icon').forEach(icon => {
+      icon.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const wasActive = icon.classList.contains('active');
+        document.querySelectorAll('.info-icon').forEach(i => i.classList.remove('active'));
+        if (!wasActive) icon.classList.add('active');
+      });
+    });
+
+    // Map Setup
+    const streetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap', maxZoom: 18
+    });
+    const satelliteMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '© Esri', maxZoom: 18
+    });
+
+    const map = L.map('map', {
+      zoomControl: true,
+      scrollWheelZoom: true,
+      zoomSnap: 0.5,
+      layers: [satelliteMap]
+    }).setView([39.75, -121.6], 10);
+
+    L.control.layers({ "Satellite Terrain": satelliteMap, "Street Map": streetMap }).addTo(map);
+
+    const drawnItems = new L.FeatureGroup();
+    const fireGridLayer = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+    map.addLayer(fireGridLayer);
+
+    const drawControl = new L.Control.Draw({
+      draw: { polygon: false, polyline: false, circle: false, marker: false, circlemarker: false, rectangle: true },
+      edit: { featureGroup: drawnItems }
+    });
+    map.addControl(drawControl);
+
+    // City Search with Live Autocomplete Dropdown Menu
+    const searchInput = document.getElementById('city-search-input');
+    const searchBtn = document.getElementById('city-search-btn');
+    const cityDropdown = document.getElementById('city-dropdown');
+    let searchDebounce = null;
+
+    async function fetchCitySuggestions(query, autoJumpFirst = false) {
+      if (!query) {
+        cityDropdown.style.display = 'none';
+        return;
+      }
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&q=${encodeURIComponent(query)}`);
+        const results = await res.json();
+
+        if (!results || results.length === 0) {
+          cityDropdown.innerHTML = `<div class="city-option"><span class="city-option-sub">No matching locations found</span></div>`;
+          cityDropdown.style.display = 'block';
+          return;
+        }
+
+        if (autoJumpFirst) {
+          const first = results[0];
+          map.setView([parseFloat(first.lat), parseFloat(first.lon)], 11);
+          searchInput.value = first.display_name.split(',').slice(0, 3).join(',');
+          cityDropdown.style.display = 'none';
+          return;
+        }
+
+        cityDropdown.innerHTML = "";
+        results.forEach(item => {
+          const parts = item.display_name.split(',');
+          const mainName = parts[0].trim();
+          const subName = parts.slice(1, 4).join(',').trim();
+
+          const div = document.createElement('div');
+          div.className = 'city-option';
+          div.innerHTML = `
+            <span class="city-option-main">${mainName}</span>
+            <span class="city-option-sub">${subName || item.type}</span>
+          `;
+          div.addEventListener('click', (e) => {
+            e.stopPropagation();
+            map.setView([parseFloat(item.lat), parseFloat(item.lon)], 11);
+            searchInput.value = subName ? `${mainName}, ${subName}` : mainName;
+            cityDropdown.style.display = 'none';
+          });
+          cityDropdown.appendChild(div);
+        });
+        cityDropdown.style.display = 'block';
+      } catch (e) {
+        cityDropdown.style.display = 'none';
+      }
+    }
+
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchDebounce);
+      const q = searchInput.value.trim();
+      if (q.length < 2) {
+        cityDropdown.style.display = 'none';
+        return;
+      }
+      searchDebounce = setTimeout(() => fetchCitySuggestions(q, false), 300);
+    });
+
+    searchInput.addEventListener('focus', () => {
+      if (cityDropdown.children.length > 0 && searchInput.value.trim().length >= 2) {
+        cityDropdown.style.display = 'block';
+      }
+    });
+
+    searchBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fetchCitySuggestions(searchInput.value.trim(), true);
+    });
+
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        fetchCitySuggestions(searchInput.value.trim(), true);
+      }
+    });
+
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.info-icon').forEach(i => i.classList.remove('active'));
+      calPopover.style.display = 'none';
+      startBtn.classList.remove('active');
+      endBtn.classList.remove('active');
+      cityDropdown.style.display = 'none';
+    });
+
+    let selectedBounds = null;
+    let fullRangeData = null;
+    let playInterval = null;
+
+    // Clamps any rectangle (drawn OR edited) to MAX_SPAN_DEG
+    function clampLeafletBounds(bounds) {
+      const center = bounds.getCenter();
+      const latSpan = bounds.getNorth() - bounds.getSouth();
+      const lonSpan = bounds.getEast() - bounds.getWest();
+      const wasClamped = (latSpan > MAX_SPAN_DEG + 0.0001 || lonSpan > MAX_SPAN_DEG + 0.0001);
+
+      const halfLat = Math.min(latSpan / 2, MAX_SPAN_DEG / 2);
+      const halfLon = Math.min(lonSpan / 2, MAX_SPAN_DEG / 2);
+
+      const clamped = L.latLngBounds(
+        [center.lat - halfLat, center.lng - halfLon],
+        [center.lat + halfLat, center.lng + halfLon]
+      );
+      return { bounds: clamped, wasClamped };
+    }
+
+    function applyClampedSelection(rawBounds) {
+      drawnItems.clearLayers();
+      fireGridLayer.clearLayers();
+      fullRangeData = null;
+
+      const { bounds, wasClamped } = clampLeafletBounds(rawBounds);
+      selectedBounds = bounds;
+
+      document.getElementById('box-notice').style.display = wasClamped ? 'block' : 'none';
+
+      const clampedRect = L.rectangle(selectedBounds, { color: '#3388ff', weight: 2 });
+      drawnItems.addLayer(clampedRect);
+      map.fitBounds(selectedBounds, { padding: [30, 30] });
+
+      loadMonthRiskDots(viewYear, viewMonth);
+      loadTimeline();
+    }
+
+    map.on(L.Draw.Event.CREATED, function (e) {
+      applyClampedSelection(e.layer.getBounds());
+    });
+
+    map.on(L.Draw.Event.EDITED, function (e) {
+      e.layers.eachLayer(function (layer) {
+        applyClampedSelection(layer.getBounds());
+      });
+    });
+
+    document.getElementById('zoom-box-btn').addEventListener('click', () => {
+      if (selectedBounds) map.fitBounds(selectedBounds, { padding: [30, 30] });
+    });
+
+    document.getElementById('reset-zoom-btn').addEventListener('click', () => {
+      map.setView([20, 0], 2);
+    });
+
+    function getFireColor(frp) {
+      if (frp > 180) return '#990000';
+      if (frp > 120) return '#d7301f';
+      if (frp > 70)  return '#fc8d59';
+      return '#fee08b';
+    }
+
+    function updateRiskStats(hotspots) {
+      const count = hotspots.length;
+      let totalFrp = 0;
+      let maxFrp = 0;
+
+      hotspots.forEach(s => {
+        totalFrp += s.harmonized_frp;
+        if (s.harmonized_frp > maxFrp) maxFrp = s.harmonized_frp;
+      });
+
+      document.getElementById('stat-count').textContent = count;
+      document.getElementById('stat-total-frp').textContent = `${totalFrp.toFixed(1)} MW`;
+      document.getElementById('stat-max-frp').textContent = `${maxFrp.toFixed(1)} MW`;
+
+      const level = classifyRiskClient(count, totalFrp);
+      const badge = document.getElementById('risk-badge');
+      if (level === "none") {
+        badge.textContent = "CLEAR";
+        badge.style.background = "#2e7d32";
+      } else if (level === "low") {
+        badge.textContent = "LOW";
+        badge.style.background = "#f9a825";
+      } else if (level === "moderate") {
+        badge.textContent = "MODERATE";
+        badge.style.background = "#ef6c00";
+      } else if (level === "high") {
+        badge.textContent = "HIGH";
+        badge.style.background = "#d32f2f";
+      } else {
+        badge.textContent = "EXTREME";
+        badge.style.background = "#7f0000";
+      }
+    }
+
+    function renderDayFrame(dayIndex) {
+      if (!fullRangeData || !fullRangeData.timeline[dayIndex]) return;
+      const dayData = fullRangeData.timeline[dayIndex];
+
+      document.getElementById('day-slider').value = dayIndex;
+      document.getElementById('active-day-label').textContent = dayData.date;
+
+      const deltaBadge = document.getElementById('delta-badge');
+      if (dayIndex === 0) {
+        deltaBadge.textContent = "Start";
+        deltaBadge.style.background = "#e0e0e0";
+        deltaBadge.style.color = "#333";
+      } else if (dayData.delta_from_prev_day > 0) {
+        deltaBadge.textContent = `+${dayData.delta_from_prev_day}`;
+        deltaBadge.style.background = "#ffebee";
+        deltaBadge.style.color = "#c62828";
+      } else if (dayData.delta_from_prev_day < 0) {
+        deltaBadge.textContent = `${dayData.delta_from_prev_day}`;
+        deltaBadge.style.background = "#e8f5e9";
+        deltaBadge.style.color = "#2e7d32";
+      } else {
+        deltaBadge.textContent = "0";
+        deltaBadge.style.background = "#e0e0e0";
+        deltaBadge.style.color = "#333";
+      }
+
+      updateRiskStats(dayData.hotspots);
+      fireGridLayer.clearLayers();
+
+      dayData.hotspots.forEach(spot => {
+        const half = (spot.cell_deg || 0.0035) / 2;
+        const cellBounds = [
+          [spot.lat - half, spot.lon - half],
+          [spot.lat + half, spot.lon + half]
+        ];
+        L.rectangle(cellBounds, {
+          color: getFireColor(spot.harmonized_frp),
+          weight: 0.5,
+          fillColor: getFireColor(spot.harmonized_frp),
+          fillOpacity: 0.72
+        })
+        .bindPopup(`<strong>${spot.sensor}</strong> (${dayData.date})<br>Harmonized FRP: ${spot.harmonized_frp} MW`)
+        .addTo(fireGridLayer);
+      });
+
+      const payload = {
+        date: dayData.date,
+        bbox: fullRangeData.bbox,
+        count: dayData.count,
+        delta_from_prev_day: dayData.delta_from_prev_day,
+        hotspots: dayData.hotspots,
+        grid_size: fullRangeData.grid_size,
+        terrain_grid: fullRangeData.terrain_grid
+      };
+
+      document.getElementById('bridge-status').textContent = `Synced: ${dayData.date} (${dayData.count} cells)`;
+
+      const godotFrame = document.getElementById('godot-frame');
+      godotFrame.contentWindow.postMessage(payload, '*');
+    }
+
+    document.getElementById('day-slider').addEventListener('input', (e) => {
+      renderDayFrame(parseInt(e.target.value, 10));
+    });
+
+    document.getElementById('play-btn').addEventListener('click', () => {
+      const btn = document.getElementById('play-btn');
+      if (playInterval) {
+        clearInterval(playInterval);
+        playInterval = null;
+        btn.textContent = "▶ Play";
+        return;
+      }
+      btn.textContent = "⏸ Pause";
+      playInterval = setInterval(() => {
+        const slider = document.getElementById('day-slider');
+        let next = parseInt(slider.value, 10) + 1;
+        if (next > parseInt(slider.max, 10)) next = 0;
+        renderDayFrame(next);
+      }, 1000);
+    });
+
+    async function loadTimeline() {
+      if (!selectedBounds) return;
+
+      if (playInterval) {
+        clearInterval(playInterval);
+        playInterval = null;
+        document.getElementById('play-btn').textContent = "▶ Play";
+      }
+
+      const loader = document.getElementById('map-loader');
+      loader.style.display = "flex";
+      document.getElementById('bridge-status').textContent = "Loading Satellite Data...";
+
+      try {
+        const west = selectedBounds.getWest();
+        const south = selectedBounds.getSouth();
+        const east = selectedBounds.getEast();
+        const north = selectedBounds.getNorth();
+
+        const url = `http://127.0.0.1:8000/api/hotspots_range?start_date=${startDateVal}&end_date=${endDateVal}&west=${west}&south=${south}&east=${east}&north=${north}`;
+        const response = await fetch(url);
+        fullRangeData = await response.json();
+
+        // Sync exact timeline risk levels into the calendar dot cache so colors match 100%
+        fullRangeData.timeline.forEach(day => {
+          const ym = day.date.slice(0, 7);
+          const key = `${ym}_${selectedBounds.toBBoxString()}`;
+          if (!monthRiskCache[key]) monthRiskCache[key] = {};
+          const totalFrp = day.hotspots.reduce((sum, s) => sum + s.harmonized_frp, 0);
+          const lvl = day.risk_level || classifyRiskClient(day.hotspots.length, totalFrp);
+          if (lvl !== "none") {
+            monthRiskCache[key][day.date] = lvl;
+          } else {
+            delete monthRiskCache[key][day.date];
+          }
+        });
+        renderCalendarGrid();
+
+        const timelineBar = document.getElementById('timeline-bar');
+        const slider = document.getElementById('day-slider');
+        if (fullRangeData.timeline.length > 1) {
+          timelineBar.style.display = "flex";
+          slider.max = fullRangeData.timeline.length - 1;
+        } else {
+          timelineBar.style.display = "none";
+        }
+
+        renderDayFrame(0);
+      } catch (err) {
+        document.getElementById('bridge-status').textContent = "Connection Error";
+      } finally {
+        loader.style.display = "none";
+      }
+    }
+
+    document.getElementById('fetch-btn').addEventListener('click', () => {
+      if (!selectedBounds) {
+        alert("Please draw a rectangle on the map first!");
+        return;
+      }
+      loadTimeline();
+    });
+  </script>
+</body>
+</html>
