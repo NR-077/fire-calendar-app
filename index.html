@@ -752,17 +752,27 @@
       });
     });
 
+    const verticalBounds = L.latLngBounds(
+      L.latLng(-85, -100000),
+      L.latLng(85, 100000)
+    );
+
     const streetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap', maxZoom: 18
+      attribution: '© OpenStreetMap',
+      maxZoom: 18
     });
     const satelliteMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: '© Esri', maxZoom: 18
+      attribution: '© Esri',
+      maxZoom: 18
     });
 
     const map = L.map('map', {
       zoomControl: true,
       scrollWheelZoom: true,
       zoomSnap: 0.5,
+      minZoom: 2,
+      maxBounds: verticalBounds,
+      maxBoundsViscosity: 1.0,
       layers: [satelliteMap]
     }).setView([39.75, -121.6], 10);
 
