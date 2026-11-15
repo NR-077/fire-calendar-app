@@ -226,7 +226,17 @@
     }
     #play-btn { white-space: nowrap; flex-shrink: 0; padding: 3px 8px; }
     #day-slider { flex: 1 1 auto; min-width: 50px; cursor: pointer; }
-    #active-day-label { font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+    #active-day-label { font-weight: 600; white-space: nowrap; flex-shrink: 0; font-family: monospace; }
+    #day-counter-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #e8f0fe;
+      color: #1a73e8;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
     #delta-badge {
       font-size: 11px;
       font-weight: 600;
@@ -417,8 +427,9 @@
     <!-- Day-by-Day Scrubber -->
     <div id="timeline-bar">
       <button id="play-btn">▶ Play</button>
-      <input type="range" id="day-slider" min="0" max="0" value="0" />
+      <input type="range" id="day-slider" min="0" max="0" value="0" step="1" />
       <span id="active-day-label">--</span>
+      <span id="day-counter-badge">Day 1 of 1</span>
       <span id="delta-badge">Start</span>
     </div>
 
@@ -479,7 +490,7 @@
       <strong>How to Operate:</strong>
       <ol>
         <li><strong>Search &amp; Select Area:</strong> Search a city above and pick from the dropdown, then click the black square icon on the left of the map to draw a box (max 50 km wide)—hotspots load automatically.</li>
-        <li><strong>Pick Dates &amp; Play:</strong> Open <em>From / To</em> (colored dots show active fire days) or pick a past burn from <em>History</em> to auto-reload the timeline and scrub day-by-day progression.</li>
+        <li><strong>Pick Dates &amp; Play:</strong> Open <em>From / To</em> (colored dots show active fire days) or pick a past burn from <em>History</em> to load a day-by-day timeline across every day in your chosen date range.</li>
       </ol>
     </div>
   </div>
@@ -904,15 +915,8 @@
       if (!historyDropdown.value) return;
       const [evStart, evEnd] = historyDropdown.value.split('|');
 
-      const d1 = new Date(evStart + 'T00:00:00');
-      const d2 = new Date(evEnd + 'T00:00:00');
-      const diffDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
-      if (diffDays > 13) {
-        d2.setDate(d1.getDate() + 13);
-      }
-
-      startDateVal = formatLocalDate(d1);
-      endDateVal = formatLocalDate(d2);
+      startDateVal = evStart;
+      endDateVal = evEnd;
       updateDateButtons();
 
       const parts = startDateVal.split('-');
@@ -1018,11 +1022,13 @@
     }
 
     function renderDayFrame(dayIndex) {
-      if (!fullRangeData || !fullRangeData.timeline[dayIndex]) return;
+      if (!fullRangeData || !fullRangeData.timeline || !fullRangeData.timeline[dayIndex]) return;
+      const totalDays = fullRangeData.timeline.length;
       const dayData = fullRangeData.timeline[dayIndex];
 
       document.getElementById('day-slider').value = dayIndex;
       document.getElementById('active-day-label').textContent = dayData.date;
+      document.getElementById('day-counter-badge').textContent = `Day ${dayIndex + 1} of ${totalDays}`;
 
       const deltaBadge = document.getElementById('delta-badge');
       if (dayIndex === 0) {
@@ -1104,9 +1110,13 @@
 
         const url = `https://fire-calendar-app.onrender.com/api/hotspots_range?start_date=${startDateVal}&end_date=${endDateVal}&west=${west}&south=${south}&east=${east}&north=${north}`;
         const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.status}`);
+        }
         fullRangeData = await response.json();
 
-        fullRangeData.timeline.forEach(day => {
+        const days = fullRangeData.timeline || [];
+        days.forEach(day => {
           const ym = day.date.slice(0, 7);
           const key = `${ym}_${selectedBounds.toBBoxString()}`;
           if (!monthRiskCache[key]) monthRiskCache[key] = {};
@@ -1122,14 +1132,18 @@
 
         const timelineBar = document.getElementById('timeline-bar');
         const slider = document.getElementById('day-slider');
-        if (fullRangeData.timeline.length > 1) {
+        if (days.length > 1) {
           timelineBar.style.display = "flex";
-          slider.max = fullRangeData.timeline.length - 1;
+          slider.min = 0;
+          slider.max = days.length - 1;
+          slider.value = 0;
         } else {
           timelineBar.style.display = "none";
         }
 
-        renderDayFrame(0);
+        if (days.length > 0) {
+          renderDayFrame(0);
+        }
       } catch (err) {
         console.error("Error loading satellite data:", err);
       } finally {

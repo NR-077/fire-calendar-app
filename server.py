@@ -36,6 +36,7 @@ app.add_middleware(
 
 MODIS_TO_VIIRS_FACTOR = 1.35
 MAX_SPAN_DEG = 0.45
+MAX_TIMELINE_DAYS = 90  # Supports multi-week/multi-month ranges
 
 # Earth Engine Asset IDs
 MODIS_ASSET = "FIRMS"
@@ -80,7 +81,6 @@ def get_combined_viirs_image(start_date, end_date, region):
                 img.select(['Bright_ti4']).subtract(300).max(0).multiply(3.1)
             )).rename('frp')
 
-            # Filter out low confidence (1 = low, 2 = nominal, 3 = high) and weak thermal noise
             valid_mask = ee.Image(ee.Algorithms.If(
                 has_conf,
                 img.select(['confidence']).gte(2),
@@ -91,7 +91,12 @@ def get_combined_viirs_image(start_date, end_date, region):
         empty = ee.Image.constant(0).rename('frp').updateMask(ee.Image.constant(0)).toFloat()
         return ee.Image(ee.Algorithms.If(has_ti4, build(), empty))
 
-    return merged.map(mask_viirs).max().clip(region)
+    empty_fallback = ee.Image.constant(0).rename('frp').updateMask(ee.Image.constant(0)).toFloat()
+    return ee.Image(ee.Algorithms.If(
+        merged.size().gt(0),
+        merged.map(mask_viirs).max().clip(region),
+        empty_fallback
+    ))
 
 def get_modis_image(start_date, end_date, region):
     """Extracts Terra & Aqua 1km MODIS hotspots with confidence >= 30% and harmonizes FRP."""
@@ -116,14 +121,18 @@ def get_modis_image(start_date, end_date, region):
         empty = ee.Image.constant(0).rename('frp').updateMask(ee.Image.constant(0)).toFloat()
         return ee.Image(ee.Algorithms.If(has_t21, build(), empty))
 
-    return modis_col.map(mask_modis).max().clip(region)
+    empty_fallback = ee.Image.constant(0).rename('frp').updateMask(ee.Image.constant(0)).toFloat()
+    return ee.Image(ee.Algorithms.If(
+        modis_col.size().gt(0),
+        modis_col.map(mask_modis).max().clip(region),
+        empty_fallback
+    ))
 
 @lru_cache(maxsize=256)
 def cached_month_risk(year: int, month: int, west: float, south: float, east: float, north: float):
     region = ee.Geometry.Rectangle([west, south, east, north])
     days_in_month = calendar.monthrange(year, month)[1]
     month_start = ee.Date.fromYMD(year, month, 1)
-    month_end = month_start.advance(1, 'month')
 
     is_pre_viirs = (year < 2012) or (year == 2012 and month == 1)
     scale = 1000 if is_pre_viirs else 375
@@ -139,7 +148,6 @@ def cached_month_risk(year: int, month: int, west: float, south: float, east: fl
         else:
             viirs_img = get_combined_viirs_image(d_start, d_end, region)
             modis_img = get_modis_image(d_start, d_end, region)
-            # Combine VIIRS + MODIS so fires missed by one satellite pass are caught by the other
             fire_img = ee.ImageCollection([viirs_img, modis_img]).max().clip(region)
 
         stats = fire_img.reduceRegion(
@@ -183,7 +191,6 @@ def fetch_single_day_hotspots(date_str: str, region):
     is_pre_viirs = date_str < "2012-01-20"
     hotspots = []
 
-    # 1. Sample 375m VIIRS (Suomi-NPP + NOAA-20) when available
     viirs_mask_for_dedup = None
     if not is_pre_viirs:
         viirs_img = get_combined_viirs_image(start_date, end_date, region)
@@ -208,10 +215,8 @@ def fetch_single_day_hotspots(date_str: str, region):
                     "sensor": "VIIRS 375m (SNPP/NOAA-20)"
                 })
 
-    # 2. Sample 1km MODIS (Terra & Aqua), masking out areas already covered by 375m VIIRS
     modis_img = get_modis_image(start_date, end_date, region)
     if viirs_mask_for_dedup is not None:
-        # Focal max creates a ~500m buffer around VIIRS detections to prevent duplicate overlapping squares
         viirs_coverage = viirs_mask_for_dedup.focal_max(radius=500, units='meters').unmask(0)
         modis_img = modis_img.updateMask(viirs_coverage.Not())
 
@@ -242,8 +247,8 @@ def cached_hotspots_range(start_date: str, end_date: str, west: float, south: fl
     d2 = datetime.strptime(end_date, "%Y-%m-%d")
     if d2 < d1:
         d1, d2 = d2, d1
-    if (d2 - d1).days > 13:
-        d2 = d1 + timedelta(days=13)
+    if (d2 - d1).days >= MAX_TIMELINE_DAYS:
+        d2 = d1 + timedelta(days=MAX_TIMELINE_DAYS - 1)
 
     region = ee.Geometry.Rectangle([west, south, east, north])
     timeline = []
