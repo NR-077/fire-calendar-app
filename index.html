@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Wildfire Hotspots & Future Simulation</title>
+  <title>Historical Fire Hotspots</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
   <style>
@@ -16,25 +16,14 @@
       color: #1a1d20;
     }
 
-    /* Split Panels */
+    /* Full-Width Main Panel */
     #left-panel {
-      width: 50%;
+      width: 100%;
       display: flex;
       flex-direction: column;
       padding: 14px 16px;
       gap: 8px;
       background: #ffffff;
-      border-right: 1px solid #dcdfe4;
-      overflow: hidden;
-    }
-    #right-panel {
-      width: 50%;
-      display: flex;
-      flex-direction: column;
-      padding: 14px 16px;
-      gap: 8px;
-      background: #121417;
-      color: #f1f3f5;
       overflow: hidden;
     }
 
@@ -46,7 +35,6 @@
       border-bottom: 1px solid #e5e7eb;
       padding-bottom: 6px;
     }
-    #right-panel .panel-header { border-bottom-color: #2c3036; }
     .panel-title {
       margin: 0;
       font-size: 16px;
@@ -57,7 +45,6 @@
       font-size: 11.5px;
       color: #6c757d;
     }
-    #right-panel .panel-sub { color: #8c959f; }
 
     /* City Search Bar with Dropdown Menu */
     .search-wrapper {
@@ -354,7 +341,7 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Instructions Footer Card (Left Side) */
+    /* Instructions Footer Card */
     .instructions-box {
       background: #f8f9fa;
       border: 1px solid #dee2e6;
@@ -369,44 +356,14 @@
       margin: 4px 0 0 0;
       padding-left: 18px;
     }
-
-    /* Right Panel Simulation & Status Footer */
-    iframe {
-      flex: 1 1 auto;
-      border: 1px solid #2c3036;
-      border-radius: 6px;
-      background: #090a0c;
-    }
-    .sim-footer {
-      background: #1a1d22;
-      border: 1px solid #2c3036;
-      border-radius: 6px;
-      padding: 8px 12px;
-      font-size: 12px;
-      color: #adb5bd;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-    }
-    .sim-status-pill {
-      padding: 3px 8px;
-      border-radius: 4px;
-      background: #252a32;
-      color: #6ea8fe;
-      font-weight: 600;
-      font-size: 11.5px;
-      white-space: nowrap;
-    }
   </style>
 </head>
 <body>
 
-  <!-- LEFT SIDE: Historical Hotspots & Instructions -->
   <div id="left-panel">
     <div class="panel-header">
       <h2 class="panel-title">Historical Fire Hotspots</h2>
-      <span class="panel-sub">NASA MODIS &amp; VIIRS (2000–Present)</span>
+      <span class="panel-sub">NASA MODIS (Terra/Aqua) &amp; VIIRS (SNPP/NOAA-20)</span>
     </div>
 
     <!-- Global City Search Bar with Dropdown Menu -->
@@ -522,26 +479,8 @@
       <strong>How to Operate:</strong>
       <ol>
         <li><strong>Search &amp; Select Area:</strong> Search a city above and pick from the dropdown, then click the black square icon on the left of the map to draw a box (max 50 km wide)—hotspots load automatically.</li>
-        <li><strong>Pick Dates &amp; Play:</strong> Open <em>From / To</em> (colored dots show active fire days) to auto-reload the timeline, scrub day-by-day progression, and send terrain + ignition cells to the simulation.</li>
+        <li><strong>Pick Dates &amp; Play:</strong> Open <em>From / To</em> (colored dots show active fire days) or pick a past burn from <em>History</em> to auto-reload the timeline and scrub day-by-day progression.</li>
       </ol>
-    </div>
-  </div>
-
-  <!-- RIGHT SIDE: Future Fire Simulation -->
-  <div id="right-panel">
-    <div class="panel-header">
-      <h2 class="panel-title">Future Fire Simulation</h2>
-      <span class="panel-sub">Cellular Spread &amp; Terrain Model</span>
-    </div>
-
-    <iframe id="godot-frame" src="about:blank" title="Future Fire Simulation"></iframe>
-
-    <div class="sim-footer">
-      <div>
-        <strong style="color: #f1f3f5;">Simulation Controls:</strong>
-        <span>Left-click ignite &bull; Right-drag firebreak &bull; Space play/pause &bull; Arrow keys wind</span>
-      </div>
-      <span id="bridge-status" class="sim-status-pill">Awaiting Map Selection</span>
     </div>
   </div>
 
@@ -550,7 +489,6 @@
   <script>
     const MAX_SPAN_DEG = 0.45; // Max ~50km x 50km selection box
 
-    // Date Formatting & Initial State (Most recent 4 days)
     function formatLocalDate(dateObj) {
       const y = dateObj.getFullYear();
       const m = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -632,7 +570,6 @@
         const data = await res.json();
         monthRiskCache[cacheKey] = data.risk_days || {};
 
-        // Overlay any exact loaded timeline days so they always match 100%
         if (fullRangeData && fullRangeData.timeline) {
           fullRangeData.timeline.forEach(day => {
             if (day.date.startsWith(`${year}-${String(mNum).padStart(2, '0')}`)) {
@@ -795,7 +732,6 @@
       loadMonthRiskDots(viewYear, viewMonth);
     });
 
-    // Click-only Info Popups
     document.querySelectorAll('.info-icon').forEach(icon => {
       icon.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -805,7 +741,6 @@
       });
     });
 
-    // Map Setup
     const streetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap', maxZoom: 18
     });
@@ -833,7 +768,6 @@
     });
     map.addControl(drawControl);
 
-    // City Search with Live Autocomplete Dropdown Menu
     const searchInput = document.getElementById('city-search-input');
     const searchBtn = document.getElementById('city-search-btn');
     const cityDropdown = document.getElementById('city-dropdown');
@@ -970,7 +904,6 @@
       if (!historyDropdown.value) return;
       const [evStart, evEnd] = historyDropdown.value.split('|');
 
-      // Cap range to 14 days max to match backend timeline limit
       const d1 = new Date(evStart + 'T00:00:00');
       const d2 = new Date(evEnd + 'T00:00:00');
       const diffDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
@@ -990,7 +923,6 @@
       if (selectedBounds) loadTimeline();
     });
 
-    // Clamps any rectangle (drawn OR edited) to MAX_SPAN_DEG
     function clampLeafletBounds(bounds) {
       const center = bounds.getCenter();
       const latSpan = bounds.getNorth() - bounds.getSouth();
@@ -1129,21 +1061,6 @@
         .bindPopup(`<strong>${spot.sensor}</strong> (${dayData.date})<br>Harmonized FRP: ${spot.harmonized_frp} MW`)
         .addTo(fireGridLayer);
       });
-
-      const payload = {
-        date: dayData.date,
-        bbox: fullRangeData.bbox,
-        count: dayData.count,
-        delta_from_prev_day: dayData.delta_from_prev_day,
-        hotspots: dayData.hotspots,
-        grid_size: fullRangeData.grid_size,
-        terrain_grid: fullRangeData.terrain_grid
-      };
-
-      document.getElementById('bridge-status').textContent = `Synced: ${dayData.date} (${dayData.count} cells)`;
-
-      const godotFrame = document.getElementById('godot-frame');
-      godotFrame.contentWindow.postMessage(payload, '*');
     }
 
     document.getElementById('day-slider').addEventListener('input', (e) => {
@@ -1178,7 +1095,6 @@
 
       const loader = document.getElementById('map-loader');
       loader.style.display = "flex";
-      document.getElementById('bridge-status').textContent = "Loading Satellite Data...";
 
       try {
         const west = selectedBounds.getWest();
@@ -1190,7 +1106,6 @@
         const response = await fetch(url);
         fullRangeData = await response.json();
 
-        // Sync exact timeline risk levels into the calendar dot cache so colors match 100%
         fullRangeData.timeline.forEach(day => {
           const ym = day.date.slice(0, 7);
           const key = `${ym}_${selectedBounds.toBBoxString()}`;
@@ -1216,7 +1131,7 @@
 
         renderDayFrame(0);
       } catch (err) {
-        document.getElementById('bridge-status').textContent = "Connection Error";
+        console.error("Error loading satellite data:", err);
       } finally {
         loader.style.display = "none";
       }
